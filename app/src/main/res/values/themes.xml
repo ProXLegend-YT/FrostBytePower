@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.FrostBytePower" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/frost_bg</item>
+        <item name="android:navigationBarColor">@color/frost_bg</item>
+        <item name="android:windowBackground">@color/frost_bg</item>
+    </style>
+</resources>

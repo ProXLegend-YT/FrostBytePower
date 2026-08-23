@@ -1,0 +1,10 @@
+<resources>
+    <color name="frost_bg">#0B0E14</color>
+    <color name="frost_surface">#151A24</color>
+    <color name="frost_accent">#4FD1FF</color>
+    <color name="frost_accent_dim">#2A6E85</color>
+    <color name="frost_text_primary">#F2F6FA</color>
+    <color name="frost_text_secondary">#8B99AC</color>
+    <color name="frost_danger">#FF5C6C</color>
+    <color name="frost_success">#3DDC97</color>
+</resources>

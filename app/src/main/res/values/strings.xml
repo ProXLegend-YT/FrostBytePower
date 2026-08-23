@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FrostByte Power</string>
+    <string name="service_label">FrostByte Power Button Service</string>
+    <string name="service_description">Lets FrostByte Power remap your volume and power buttons and detect shake gestures for the actions you choose. No data is collected or transmitted.</string>
+</resources>
