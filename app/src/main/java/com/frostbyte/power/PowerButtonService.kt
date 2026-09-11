@@ -109,6 +109,19 @@ class PowerButtonService : AccessibilityService() {
                 vibrateFeedback()
                 true
             }
+            ButtonAction.TOGGLE_PROXIMITY_OVERRIDE -> {
+                val newState = !PowerPrefs.isIgnoreProximityEnabled(this)
+                PowerPrefs.setIgnoreProximityEnabled(this, newState)
+                proximityOverride?.refresh()
+                vibrateFeedback()
+                android.widget.Toast.makeText(
+                    this,
+                    if (newState) "Proximity fix ON — calls will force speaker"
+                    else "Proximity fix OFF",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                true
+            }
             ButtonAction.DISABLED -> true
         }
     }

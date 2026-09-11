@@ -10,6 +10,7 @@ enum class ButtonAction(val label: String) {
     OPEN_POWER_MENU("Open Power Menu"),
     TOGGLE_FLASHLIGHT("Toggle Flashlight"),
     TAKE_SCREENSHOT("Take Screenshot"),
+    TOGGLE_PROXIMITY_OVERRIDE("Toggle Proximity Fix (Speaker on Call)"),
     DISABLED("No Action (Disable Button)")
 }
 
