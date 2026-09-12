@@ -122,6 +122,11 @@ class PowerButtonService : AccessibilityService() {
                 ).show()
                 true
             }
+            ButtonAction.OPEN_QUICK_SETTINGS -> {
+                DeviceUtils.openQuickSettings(this)
+                vibrateFeedback()
+                true
+            }
             ButtonAction.DISABLED -> true
         }
     }

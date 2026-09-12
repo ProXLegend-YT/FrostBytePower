@@ -34,6 +34,18 @@ object DeviceUtils {
         service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
     }
 
+    /**
+     * Opens the Quick Settings shade (not a specific tile - Android has no
+     * public API for a third-party app to toggle an individual system tile
+     * like Samsung's "Sensors Off", since that tile is OEM-internal, not
+     * exposed to apps). This just gets the user one action away from it
+     * instead of needing to swipe down and locate it manually - useful when
+     * the screen has already gone dark and swiping down blind is awkward.
+     */
+    fun openQuickSettings(service: android.accessibilityservice.AccessibilityService) {
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
+    }
+
     fun getBatteryPercent(context: Context): Int {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
