@@ -402,6 +402,60 @@ fun SettingsScreen() {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        SectionLabel("Sensors Off tile shortcut")
+
+        var tapPosition by remember { mutableStateOf(PowerPrefs.getSensorsOffTapPosition(context)) }
+
+        Text(
+            text = if (tapPosition != null)
+                "Calibrated at (${tapPosition!!.first}, ${tapPosition!!.second}). Assign \"Tap Sensors Off Tile\" to a button below to use it."
+            else
+                "Not calibrated yet. This lets a button open quick settings and automatically tap your Sensors Off tile, since Android gives apps no way to find that tile by name.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 15.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = {
+                PowerButtonService.instance?.startSensorsOffCalibration(
+                    onCaptured = { x, y ->
+                        PowerPrefs.setSensorsOffTapPosition(context, x, y)
+                        tapPosition = x to y
+                    },
+                    onCancelled = {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Couldn't start calibration — is the accessibility service enabled?",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            }) {
+                Text(if (tapPosition != null) "Re-calibrate" else "Calibrate")
+            }
+            if (tapPosition != null) {
+                OutlinedButton(onClick = {
+                    PowerPrefs.clearSensorsOffTapPosition(context)
+                    tapPosition = null
+                }) {
+                    Text("Clear")
+                }
+            }
+        }
+
+        Text(
+            text = "Re-calibrate if the tile ever moves — a new notification, reordered tiles, or rotating the screen can shift its position.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         SectionLabel("Power saving")
 
         ToggleRow(

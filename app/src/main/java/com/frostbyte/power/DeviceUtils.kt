@@ -46,6 +46,44 @@ object DeviceUtils {
         service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
     }
 
+    /**
+     * Opens quick settings, waits [settleDelayMs] for the shade to finish
+     * animating in, then dispatches a single tap at the given screen
+     * coordinates. This is a best-effort automation of "open shade, tap the
+     * tile the user calibrated" - it can't verify the shade actually
+     * contains the right tile at that position when it fires (e.g. if a
+     * notification changed the layout since calibration), so it may tap
+     * the wrong thing if the position has drifted. Re-run calibration if
+     * that happens.
+     */
+    fun openQuickSettingsAndTap(
+        service: android.accessibilityservice.AccessibilityService,
+        x: Int,
+        y: Int,
+        settleDelayMs: Long = 400L
+    ) {
+        service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            dispatchTap(service, x, y)
+        }, settleDelayMs)
+    }
+
+    private fun dispatchTap(service: android.accessibilityservice.AccessibilityService, x: Int, y: Int) {
+        val path = android.graphics.Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 50)
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(stroke)
+            .build()
+        try {
+            service.dispatchGesture(gesture, null, null)
+        } catch (e: Exception) {
+            // Gesture dispatch can fail if the service loses focus or the
+            // OS rejects it (e.g. over a secure/system surface) - fail
+            // silently rather than crash, same policy as the rest of this
+            // file's OS-facing calls.
+        }
+    }
+
     fun getBatteryPercent(context: Context): Int {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)

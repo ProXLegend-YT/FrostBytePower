@@ -127,7 +127,86 @@ class PowerButtonService : AccessibilityService() {
                 vibrateFeedback()
                 true
             }
+            ButtonAction.TAP_SENSORS_OFF_TILE -> {
+                val pos = PowerPrefs.getSensorsOffTapPosition(this)
+                if (pos != null) {
+                    DeviceUtils.openQuickSettingsAndTap(this, pos.first, pos.second)
+                } else {
+                    // Not calibrated yet - fall back to just opening the
+                    // shade so the button still does something useful,
+                    // and tell the user why it didn't auto-tap.
+                    DeviceUtils.openQuickSettings(this)
+                    android.widget.Toast.makeText(
+                        this,
+                        "Not calibrated yet — set this up in app settings first",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+                vibrateFeedback()
+                true
+            }
             ButtonAction.DISABLED -> true
+        }
+    }
+
+    /**
+     * Draws a real full-screen transparent overlay window (TYPE_ACCESSIBILITY_OVERLAY)
+     * on top of everything, including the system quick-settings shade, opens the shade,
+     * and records the absolute screen coordinates of the user's next tap. This has to
+     * live here rather than in MainActivity's Compose tree, because a normal app window
+     * can never draw above System UI's shade - only an accessibility-service overlay can.
+     * Calls [onCaptured] with the tapped (x, y) once received, or nothing if cancelled.
+     */
+    fun startSensorsOffCalibration(onCaptured: (Int, Int) -> Unit, onCancelled: () -> Unit) {
+        val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+        val overlayView = android.widget.FrameLayout(this)
+
+        val instructionText = android.widget.TextView(this).apply {
+            text = "Tap the Sensors Off tile in the shade above"
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.parseColor("#CC000000"))
+            textSize = 14f
+            setPadding(32, 24, 32, 24)
+        }
+        overlayView.addView(
+            instructionText,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL; bottomMargin = 60 }
+        )
+
+        val params = android.view.WindowManager.LayoutParams(
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            android.graphics.PixelFormat.TRANSLUCENT
+        )
+
+        var removed = false
+        fun removeOverlay() {
+            if (removed) return
+            removed = true
+            try { windowManager.removeView(overlayView) } catch (e: Exception) { /* already gone */ }
+        }
+
+        overlayView.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                val x = event.rawX.toInt()
+                val y = event.rawY.toInt()
+                removeOverlay()
+                onCaptured(x, y)
+                true
+            } else false
+        }
+
+        try {
+            windowManager.addView(overlayView, params)
+            performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+        } catch (e: Exception) {
+            removeOverlay()
+            onCancelled()
         }
     }
 

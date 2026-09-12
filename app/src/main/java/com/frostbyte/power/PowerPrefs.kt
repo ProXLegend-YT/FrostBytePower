@@ -12,6 +12,7 @@ enum class ButtonAction(val label: String) {
     TAKE_SCREENSHOT("Take Screenshot"),
     TOGGLE_PROXIMITY_OVERRIDE("Toggle Proximity Fix (Speaker on Call)"),
     OPEN_QUICK_SETTINGS("Open Quick Settings (for Sensors Off)"),
+    TAP_SENSORS_OFF_TILE("Tap Sensors Off Tile (needs calibration)"),
     DISABLED("No Action (Disable Button)")
 }
 
@@ -48,6 +49,8 @@ object PowerPrefs {
     private const val KEY_VIBRATION_FEEDBACK = "vibration_feedback"
     private const val KEY_SCREEN_TIMEOUT = "screen_timeout"
     private const val KEY_IGNORE_PROXIMITY = "ignore_proximity_sensor"
+    private const val KEY_SENSORS_OFF_TAP_X = "sensors_off_tap_x"
+    private const val KEY_SENSORS_OFF_TAP_Y = "sensors_off_tap_y"
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -139,6 +142,35 @@ object PowerPrefs {
 
     fun setIgnoreProximityEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_IGNORE_PROXIMITY, enabled).apply()
+    }
+
+    // Saved screen coordinates for the user's "Sensors Off" quick-settings
+    // tile, captured once via the on-screen calibration overlay. Android
+    // gives apps no reliable way to look up a specific system tile by name
+    // or ID - Samsung's quick-settings tiles aren't exposed to third-party
+    // accessibility services as identifiable nodes - so instead of guessing,
+    // the user marks the exact spot once and we just replay a tap there.
+    // Null until calibrated. Needs re-calibrating if the tile's position
+    // in the shade ever changes (reordered tiles, a notification pushing
+    // things down, orientation change, etc).
+    fun getSensorsOffTapPosition(context: Context): Pair<Int, Int>? {
+        val x = prefs(context).getInt(KEY_SENSORS_OFF_TAP_X, -1)
+        val y = prefs(context).getInt(KEY_SENSORS_OFF_TAP_Y, -1)
+        return if (x >= 0 && y >= 0) x to y else null
+    }
+
+    fun setSensorsOffTapPosition(context: Context, x: Int, y: Int) {
+        prefs(context).edit()
+            .putInt(KEY_SENSORS_OFF_TAP_X, x)
+            .putInt(KEY_SENSORS_OFF_TAP_Y, y)
+            .apply()
+    }
+
+    fun clearSensorsOffTapPosition(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_SENSORS_OFF_TAP_X)
+            .remove(KEY_SENSORS_OFF_TAP_Y)
+            .apply()
     }
 
     fun hasSeenOnboarding(context: Context): Boolean =
