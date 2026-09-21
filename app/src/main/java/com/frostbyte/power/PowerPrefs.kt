@@ -79,7 +79,11 @@ object PowerPrefs {
     fun getVolumeUpLongPressAction(context: Context) = getAction(context, KEY_VOL_UP_LONG)
     fun setVolumeUpLongPressAction(context: Context, action: ButtonAction) = setAction(context, KEY_VOL_UP_LONG, action)
 
-    fun getVolumeDownLongPressAction(context: Context) = getAction(context, KEY_VOL_DOWN_LONG)
+    fun getVolumeDownLongPressAction(context: Context): ButtonAction =
+        ButtonAction.valueOf(
+            prefs(context).getString(KEY_VOL_DOWN_LONG, ButtonAction.TOGGLE_PROXIMITY_OVERRIDE.name)
+                ?: ButtonAction.TOGGLE_PROXIMITY_OVERRIDE.name
+        )
     fun setVolumeDownLongPressAction(context: Context, action: ButtonAction) = setAction(context, KEY_VOL_DOWN_LONG, action)
 
     fun getPowerButtonAction(context: Context) = getAction(context, KEY_POWER_ACTION)
@@ -138,7 +142,7 @@ object PowerPrefs {
     // to earpiece mode. This is a real phone-call-only mechanism (there is
     // no "always on" variant of it, unlike the earlier wake-lock attempt).
     fun isIgnoreProximityEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_IGNORE_PROXIMITY, false)
+        prefs(context).getBoolean(KEY_IGNORE_PROXIMITY, true)
 
     fun setIgnoreProximityEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_IGNORE_PROXIMITY, enabled).apply()

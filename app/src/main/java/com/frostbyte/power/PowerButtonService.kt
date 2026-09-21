@@ -113,10 +113,19 @@ class PowerButtonService : AccessibilityService() {
                 val newState = !PowerPrefs.isIgnoreProximityEnabled(this)
                 PowerPrefs.setIgnoreProximityEnabled(this, newState)
                 proximityOverride?.refresh()
+
+                // Force speaker audio right now too, not just for future
+                // calls - covers the case where the sensor is already
+                // stuck and the screen is black *right now* (mid-call, or
+                // mid voice-message playback, which the automatic
+                // call-state listener can't see).
+                DeviceUtils.forceSpeakerphoneNow(this)
+                DeviceUtils.wakeScreen(this)
+
                 vibrateFeedback()
                 android.widget.Toast.makeText(
                     this,
-                    if (newState) "Proximity fix ON — calls will force speaker"
+                    if (newState) "Speaker ON — proximity fix enabled"
                     else "Proximity fix OFF",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()

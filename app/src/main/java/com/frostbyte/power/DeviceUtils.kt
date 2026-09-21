@@ -3,6 +3,7 @@ package com.frostbyte.power
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.provider.Settings
@@ -11,6 +12,29 @@ object DeviceUtils {
 
     private var flashlightOn = false
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Manual "force speaker now" for the broken-proximity-sensor workaround.
+     * Unlike [ProximityOverride], which only fires automatically when an
+     * actual phone call connects, this can be triggered at any moment -
+     * including while a voice message is playing back (e.g. in WhatsApp),
+     * which routes its own audio and never touches call state, so the
+     * automatic listener can't see it.
+     *
+     * Deliberately does NOT set AudioManager.MODE_IN_CALL here (that's only
+     * valid/safe during an actual telephony call and would disrupt normal
+     * media playback); just flips the speakerphone routing flag, which is
+     * enough to pull audio off the earpiece and stop the sensor from
+     * blacking out the screen.
+     */
+    fun forceSpeakerphoneNow(context: Context) {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = true
+        } catch (e: Exception) {
+            // Fail silently - button press shouldn't crash the service.
+        }
+    }
 
     fun toggleFlashlight(context: Context) {
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
