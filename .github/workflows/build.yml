@@ -21,6 +21,16 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # v3 tries to install the legacy "tools" package by default,
+          # which Google removed from the repository - this makes the
+          # step install only platform-tools instead, avoiding that call.
+          packages: "platform-tools"
+
+      - name: Install required SDK platform and build-tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Regenerate Gradle wrapper jar
         run: gradle wrapper --gradle-version 8.7
