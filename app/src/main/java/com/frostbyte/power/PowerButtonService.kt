@@ -172,21 +172,33 @@ class PowerButtonService : AccessibilityService() {
                 PowerPrefs.setIgnoreProximityEnabled(this, newState)
                 proximityOverride?.refresh()
 
-                // Force speaker audio right now too, not just for future
-                // calls - covers the case where the sensor is already
-                // stuck and the screen is black *right now* (mid-call, or
-                // mid voice-message playback, which the automatic
-                // call-state listener can't see).
-                DeviceUtils.forceSpeakerphoneNow(this)
-                wakeScreenViaOverlay()
-
                 vibrateFeedback()
                 android.widget.Toast.makeText(
                     this,
-                    if (newState) "Speaker ON — proximity fix enabled"
+                    if (newState) "Speaker will turn ON in 10s — proximity fix enabled"
                     else "Proximity fix OFF",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
+
+                // Requested behavior: the actual speaker-force and screen
+                // wake happen 10 seconds after the long-press, not
+                // immediately. Only run the effect if the toggle is still
+                // in the ON state 10s later (so turning it back off in the
+                // meantime cancels the pending effect rather than firing
+                // anyway).
+                handler.postDelayed({
+                    if (PowerPrefs.isIgnoreProximityEnabled(this)) {
+                        DeviceUtils.forceSpeakerphoneNow(this)
+                        // Uses the plain wake lock, not WakeScreenActivity -
+                        // WakeScreenActivity has been the common factor in
+                        // every reported regression of this button
+                        // (single/double tap breaking, focus getting
+                        // stolen), while the plain wake lock is confirmed
+                        // working via the shake-to-wake revert.
+                        DeviceUtils.wakeScreen(this)
+                    }
+                }, 10_000L)
+
                 true
             }
             ButtonAction.OPEN_QUICK_SETTINGS -> {
