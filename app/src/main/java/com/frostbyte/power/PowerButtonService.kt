@@ -76,7 +76,20 @@ class PowerButtonService : AccessibilityService() {
      * the modern setTurnScreenOn()/setShowWhenLocked() APIs on itself, so
      * that's what this does now - see WakeScreenActivity.
      */
+    /**
+     * Forces the display (and lock screen, if locked) back on - but ONLY
+     * if the screen is actually off. Launching WakeScreenActivity while
+     * the screen is already on and in use (e.g. during an active call
+     * where the user just wants speaker toggled) briefly steals window
+     * focus for no reason, which was disrupting other in-progress
+     * interactions - most notably making volume single/double-tap look
+     * broken right after using the long-press proximity toggle, since the
+     * wake activity's focus-steal interfered with the key event flow that
+     * immediately followed.
+     */
     private fun wakeScreenViaOverlay() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (powerManager.isInteractive) return
         try {
             val intent = Intent(this, WakeScreenActivity::class.java).apply {
                 addFlags(
