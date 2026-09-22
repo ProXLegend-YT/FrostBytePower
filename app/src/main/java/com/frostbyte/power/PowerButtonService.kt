@@ -277,12 +277,26 @@ class PowerButtonService : AccessibilityService() {
                     volDownLongPressFired = false
                     handler.postDelayed(volDownLongPressRunnable, longPressWindowMs)
                 }
-                // Consume the key only if a long-press action is bound -
-                // this is ACTION_DOWN, so long-press is the only gesture
-                // that could still fire before ACTION_UP is seen. Whether
-                // single/double get consumed is decided separately, on
-                // ACTION_UP, based on THEIR OWN bindings.
-                isGestureBound(isVolUp, Gesture.LONG)
+                // Consume the key on ACTION_DOWN whenever ANY gesture on
+                // this key is bound (single, double, or long-press) - not
+                // just long-press.
+                //
+                // Bug history: this used to only check long-press here,
+                // reasoning that single/double resolve later on ACTION_UP
+                // so only long-press could matter at ACTION_DOWN time.
+                // That reasoning missed a real consequence: if ACTION_DOWN
+                // is NOT consumed, Android's own default volume handling
+                // runs immediately and independently of this app - it
+                // doesn't wait to see what ACTION_UP produces. So with
+                // only single-tap bound (no long-press), every press would
+                // both change the system volume AND separately schedule
+                // this app's single-tap action, and depending on the
+                // specific device/OS build the two could interfere with
+                // each other or make the assigned action seem like it
+                // "isn't working." Consuming on DOWN whenever any gesture
+                // is bound prevents system volume handling from ever
+                // running in parallel with the app's own gesture logic.
+                hasAnyBinding(isVolUp)
             }
             KeyEvent.ACTION_UP -> {
                 if (isVolUp) {
