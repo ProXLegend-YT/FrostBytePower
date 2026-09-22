@@ -113,7 +113,18 @@ class PowerButtonService : AccessibilityService() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         if (powerManager.isInteractive) return
 
-        wakeScreenViaOverlay()
+        // Bug history: this used to call wakeScreenViaOverlay() (the
+        // WakeScreenActivity approach added for the volume-down long-press
+        // case, where the plain wake lock was confirmed not to wake the
+        // screen). That change was generalized to shake as well without
+        // separately confirming shake needed it - and the user confirmed
+        // shake-to-wake DID actually work correctly in the very first
+        // build, which used only DeviceUtils.wakeScreen() (a raw
+        // PowerManager wake lock). Reverted shake specifically back to
+        // that original, confirmed-working call; WakeScreenActivity stays
+        // in use only for the volume-button path where it was actually
+        // needed.
+        DeviceUtils.wakeScreen(this)
         vibrateFeedback()
     }
 
