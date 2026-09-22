@@ -278,13 +278,37 @@ class PowerButtonService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.repeatCount != 0) return false
-
         val isVolUp = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
         val isVolDown = event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
         val isPower = event.keyCode == KeyEvent.KEYCODE_POWER
 
         if (!isVolUp && !isVolDown && !isPower) return false
+
+        // Bug history: this used to be `if (event.repeatCount != 0) return
+        // false` as the very first line, before even checking which key
+        // this was. While a key is held down (exactly what a long-press
+        // is), Android delivers repeated ACTION_DOWN events with an
+        // incrementing repeatCount for as long as it's held - similar to
+        // keyboard key-repeat. Unconditionally returning false for every
+        // one of those repeat events meant the app told Android "I'm not
+        // handling this" in the middle of a long-press it WAS handling,
+        // letting the OS's own default key behavior run in parallel and
+        // corrupting the key state for whatever gesture came right after.
+        // This only ever surfaced once a long-press action was actually
+        // bound (since that's the only case where holding the key long
+        // enough to generate repeats matters), matching exactly what was
+        // reported: assigning a long-press action broke the whole button
+        // afterward. Repeat events must be consumed the same way the
+        // initiating ACTION_DOWN was, not bounced unconditionally.
+        if (event.repeatCount != 0) {
+            return if (isPower) {
+                PowerPrefs.getPowerButtonAction(this) != ButtonAction.DEFAULT
+            } else if (isVolUp) {
+                isGestureBound(true, Gesture.LONG)
+            } else {
+                isGestureBound(false, Gesture.LONG)
+            }
+        }
 
         if (isPower) {
             if (event.action != KeyEvent.ACTION_DOWN) return false
