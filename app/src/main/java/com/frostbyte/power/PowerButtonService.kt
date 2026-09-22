@@ -275,17 +275,20 @@ class PowerButtonService : AccessibilityService() {
                     volDownLongPressFired = false
                     handler.postDelayed(volDownLongPressRunnable, longPressWindowMs)
                 }
-                // Consume the key only if any binding beyond DEFAULT exists,
-                // so a fully-default key still behaves like stock volume.
-                hasAnyBinding(isVolUp)
+                // Consume the key only if a long-press action is bound -
+                // this is ACTION_DOWN, so long-press is the only gesture
+                // that could still fire before ACTION_UP is seen. Whether
+                // single/double get consumed is decided separately, on
+                // ACTION_UP, based on THEIR OWN bindings.
+                isGestureBound(isVolUp, Gesture.LONG)
             }
             KeyEvent.ACTION_UP -> {
                 if (isVolUp) {
                     handler.removeCallbacks(volUpLongPressRunnable)
-                    if (volUpLongPressFired) return hasAnyBinding(true)
+                    if (volUpLongPressFired) return isGestureBound(true, Gesture.LONG)
                 } else {
                     handler.removeCallbacks(volDownLongPressRunnable)
-                    if (volDownLongPressFired) return hasAnyBinding(false)
+                    if (volDownLongPressFired) return isGestureBound(false, Gesture.LONG)
                 }
 
                 val now = System.currentTimeMillis()
@@ -314,17 +317,38 @@ class PowerButtonService : AccessibilityService() {
                         }
                     }, doubleTapWindowMs)
                 }
-                hasAnyBinding(isVolUp)
+                isGestureBound(isVolUp, if (isDoubleTap) Gesture.DOUBLE else Gesture.SINGLE)
             }
             else -> false
         }
     }
 
+    /**
+     * Whether the OS's default volume behavior should be suppressed for
+     * this specific gesture (single tap / double tap / long press) - NOT
+     * whether any of the three gestures on this key has a binding.
+     *
+     * Bug history: this used to return true if ANY of single/double/long
+     * had a non-default action, which meant binding just the long-press
+     * (e.g. the volume-down proximity/speaker fix) silently ate every
+     * single plain tap too, breaking normal volume control entirely.
+     * Each gesture must only consume the key if THAT gesture is bound.
+     */
+    private fun isGestureBound(isVolUp: Boolean, gesture: Gesture): Boolean {
+        val action = when (gesture) {
+            Gesture.SINGLE -> if (isVolUp) PowerPrefs.getVolumeUpAction(this) else PowerPrefs.getVolumeDownAction(this)
+            Gesture.DOUBLE -> if (isVolUp) PowerPrefs.getVolumeUpDoubleTapAction(this) else PowerPrefs.getVolumeDownDoubleTapAction(this)
+            Gesture.LONG -> if (isVolUp) PowerPrefs.getVolumeUpLongPressAction(this) else PowerPrefs.getVolumeDownLongPressAction(this)
+        }
+        return action != ButtonAction.DEFAULT
+    }
+
+    private enum class Gesture { SINGLE, DOUBLE, LONG }
+
     private fun hasAnyBinding(isVolUp: Boolean): Boolean {
-        val single = if (isVolUp) PowerPrefs.getVolumeUpAction(this) else PowerPrefs.getVolumeDownAction(this)
-        val double = if (isVolUp) PowerPrefs.getVolumeUpDoubleTapAction(this) else PowerPrefs.getVolumeDownDoubleTapAction(this)
-        val long = if (isVolUp) PowerPrefs.getVolumeUpLongPressAction(this) else PowerPrefs.getVolumeDownLongPressAction(this)
-        return single != ButtonAction.DEFAULT || double != ButtonAction.DEFAULT || long != ButtonAction.DEFAULT
+        return isGestureBound(isVolUp, Gesture.SINGLE) ||
+            isGestureBound(isVolUp, Gesture.DOUBLE) ||
+            isGestureBound(isVolUp, Gesture.LONG)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
