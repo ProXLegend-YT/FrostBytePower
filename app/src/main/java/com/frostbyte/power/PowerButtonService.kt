@@ -60,13 +60,57 @@ class PowerButtonService : AccessibilityService() {
         proximityOverride?.refresh()
     }
 
+    /**
+     * Forces the display on via a real overlay window rather than a raw
+     * wake lock. On some Samsung/One UI builds (confirmed on Galaxy A75),
+     * PowerManager.FULL_WAKE_LOCK acquired from an accessibility-service
+     * context is silently ignored - no crash, no error, it just doesn't
+     * turn the screen on. A WindowManager overlay carrying
+     * FLAG_TURN_SCREEN_ON + FLAG_DISMISS_KEYGUARD is a much stronger,
+     * window-level signal that One UI actually honors, since it's the
+     * same mechanism used by legitimate full-screen incoming-call UIs.
+     * The window is fully transparent and removes itself shortly after,
+     * so nothing is visibly drawn - it exists only to carry those flags.
+     */
+    private fun wakeScreenViaOverlay() {
+        try {
+            val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+            val overlayView = android.view.View(this)
+
+            val params = android.view.WindowManager.LayoutParams(
+                1, 1,
+                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                android.graphics.PixelFormat.TRANSLUCENT
+            )
+
+            windowManager.addView(overlayView, params)
+
+            // Also acquire the wake lock as a belt-and-braces measure for
+            // devices where it does work - harmless if it's a no-op here.
+            DeviceUtils.wakeScreen(this)
+
+            handler.postDelayed({
+                try { windowManager.removeView(overlayView) } catch (e: Exception) { /* already gone */ }
+            }, 1500L)
+        } catch (e: Exception) {
+            // Fall back to the wake lock alone if the overlay can't be
+            // added for any reason (e.g. permission revoked).
+            DeviceUtils.wakeScreen(this)
+        }
+    }
+
     private fun handleShake() {
         // Only fires when the screen is off - shaking while already
         // unlocked should do nothing.
         val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         if (powerManager.isInteractive) return
 
-        DeviceUtils.wakeScreen(this)
+        wakeScreenViaOverlay()
         vibrateFeedback()
     }
 
@@ -90,7 +134,7 @@ class PowerButtonService : AccessibilityService() {
                 true
             }
             ButtonAction.WAKE_SCREEN -> {
-                DeviceUtils.wakeScreen(this)
+                wakeScreenViaOverlay()
                 vibrateFeedback()
                 true
             }
@@ -120,7 +164,7 @@ class PowerButtonService : AccessibilityService() {
                 // mid voice-message playback, which the automatic
                 // call-state listener can't see).
                 DeviceUtils.forceSpeakerphoneNow(this)
-                DeviceUtils.wakeScreen(this)
+                wakeScreenViaOverlay()
 
                 vibrateFeedback()
                 android.widget.Toast.makeText(
