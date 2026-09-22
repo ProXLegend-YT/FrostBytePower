@@ -5,17 +5,33 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import kotlin.math.sqrt
 
 /**
- * Detects a "shake" gesture from the accelerometer and fires [onShake].
- * Threshold is in m/s^2 above gravity - lower threshold = more sensitive.
+ * Detects a "shake" gesture and fires [onShake].
  *
- * Battery note: SENSOR_DELAY_GAME (~50Hz) is used normally. Low-power mode
- * drops to SENSOR_DELAY_NORMAL (~5Hz) which is enough for shake detection
- * and cuts accelerometer wakeups roughly 10x. The listener is fully
- * unregistered (not just paused) whenever sensitivity is DISABLED, so there
- * is zero sensor cost when the feature is off.
+ * Two mechanisms are used together:
+ *
+ * 1. TYPE_SIGNIFICANT_MOTION (when the device has it) - this is a genuine
+ *    hardware wake-up trigger sensor. Unlike a plain accelerometer, Android
+ *    is specifically designed to keep delivering these even while the
+ *    screen is off and the device is in Doze, because that's the sensor's
+ *    entire purpose (it's what things like "lift to wake" rely on
+ *    elsewhere in the OS). This is what actually makes Shake to Wake work
+ *    with the screen off - a bare accelerometer listener, even held with a
+ *    partial wake lock, is frequently suspended by the platform's sensor
+ *    batching/power policy the moment the display turns off, regardless of
+ *    the wake lock (confirmed non-functional this way on the user's
+ *    device). It's a one-shot trigger: it must be re-armed via
+ *    requestTriggerSensor() after every firing.
+ *
+ * 2. The original raw accelerometer + magnitude-threshold approach is kept
+ *    as a fallback for devices that don't expose TYPE_SIGNIFICANT_MOTION,
+ *    and remains the only mechanism used while the screen is already on
+ *    (where sensor suspension isn't a factor and the adjustable
+ *    sensitivity levels are meaningful).
  */
 class ShakeDetector(
     context: Context,
@@ -24,13 +40,40 @@ class ShakeDetector(
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val significantMotion: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
 
     private var threshold = ShakeSensitivity.MEDIUM.threshold
     private var lowPower = false
     private var registered = false
+    private var significantMotionArmed = false
     private var lastShakeTime = 0L
     private val minShakeIntervalMs = 1000L
+
+    private val significantMotionListener = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            significantMotionArmed = false
+            val now = System.currentTimeMillis()
+            if (now - lastShakeTime > minShakeIntervalMs) {
+                lastShakeTime = now
+                onShake()
+            }
+            // This is a one-shot trigger - re-arm immediately so the next
+            // shake is still caught.
+            armSignificantMotion()
+        }
+    }
+
+    private fun armSignificantMotion() {
+        val sensor = significantMotion ?: return
+        if (significantMotionArmed) return
+        significantMotionArmed = sensorManager.requestTriggerSensor(significantMotionListener, sensor)
+    }
+
+    private fun disarmSignificantMotion() {
+        significantMotion?.let { sensorManager.cancelTriggerSensor(significantMotionListener, it) }
+        significantMotionArmed = false
+    }
 
     // Most Android sensor implementations suspend delivery to a
     // non-wakeup accelerometer while the screen is off, which is exactly
@@ -67,9 +110,11 @@ class ShakeDetector(
                 acquire()
             }
         }
+        armSignificantMotion()
     }
 
     fun stop() {
+        disarmSignificantMotion()
         if (!registered) return
         sensorManager.unregisterListener(this)
         registered = false

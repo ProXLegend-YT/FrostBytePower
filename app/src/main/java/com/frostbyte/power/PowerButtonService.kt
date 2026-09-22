@@ -21,6 +21,8 @@ class PowerButtonService : AccessibilityService() {
     private var lastVolDownTime = 0L
     private var volUpLongPressFired = false
     private var volDownLongPressFired = false
+    private var pendingVolUpSingleTap: Runnable? = null
+    private var pendingVolDownSingleTap: Runnable? = null
     private val volUpLongPressRunnable = Runnable {
         volUpLongPressFired = true
         runAction(PowerPrefs.getVolumeUpLongPressAction(this))
@@ -296,6 +298,15 @@ class PowerButtonService : AccessibilityService() {
                 val isDoubleTap = now - lastTime < doubleTapWindowMs
 
                 if (isDoubleTap) {
+                    // A genuine double-tap: cancel the pending single-tap
+                    // action from the first press so it doesn't also fire.
+                    if (isVolUp) {
+                        pendingVolUpSingleTap?.let { handler.removeCallbacks(it) }
+                        pendingVolUpSingleTap = null
+                    } else {
+                        pendingVolDownSingleTap?.let { handler.removeCallbacks(it) }
+                        pendingVolDownSingleTap = null
+                    }
                     val doubleAction = if (isVolUp)
                         PowerPrefs.getVolumeUpDoubleTapAction(this)
                     else
@@ -306,16 +317,29 @@ class PowerButtonService : AccessibilityService() {
                     if (isVolUp) lastVolUpTime = now else lastVolDownTime = now
                     // Delay the single-tap action slightly so a following
                     // second tap can still be caught as a double-tap.
-                    handler.postDelayed({
-                        val elapsed = System.currentTimeMillis() - now
-                        if (elapsed >= doubleTapWindowMs) {
-                            val singleAction = if (isVolUp)
-                                PowerPrefs.getVolumeUpAction(this)
-                            else
-                                PowerPrefs.getVolumeDownAction(this)
-                            runAction(singleAction)
-                        }
-                    }, doubleTapWindowMs)
+                    //
+                    // Bug history: this used to re-check
+                    // (System.currentTimeMillis() - now >= doubleTapWindowMs)
+                    // inside the delayed callback itself. That comparison is
+                    // measuring against the exact same delay it was
+                    // scheduled with, so ordinary Handler/GC jitter of even
+                    // a few ms made "elapsed" land just under the window
+                    // far more often than not - silently dropping the
+                    // single-tap action almost every time. The fact that
+                    // this callback runs at all (i.e. wasn't cancelled
+                    // above by a real double-tap) is already sufficient
+                    // proof no double-tap happened, so it now just runs
+                    // unconditionally.
+                    val singleTapRunnable = Runnable {
+                        val singleAction = if (isVolUp)
+                            PowerPrefs.getVolumeUpAction(this)
+                        else
+                            PowerPrefs.getVolumeDownAction(this)
+                        runAction(singleAction)
+                        if (isVolUp) pendingVolUpSingleTap = null else pendingVolDownSingleTap = null
+                    }
+                    if (isVolUp) pendingVolUpSingleTap = singleTapRunnable else pendingVolDownSingleTap = singleTapRunnable
+                    handler.postDelayed(singleTapRunnable, doubleTapWindowMs)
                 }
                 isGestureBound(isVolUp, if (isDoubleTap) Gesture.DOUBLE else Gesture.SINGLE)
             }
