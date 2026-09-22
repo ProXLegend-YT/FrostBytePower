@@ -2,6 +2,7 @@ package com.frostbyte.power
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
@@ -61,45 +62,32 @@ class PowerButtonService : AccessibilityService() {
     }
 
     /**
-     * Forces the display on via a real overlay window rather than a raw
-     * wake lock. On some Samsung/One UI builds (confirmed on Galaxy A75),
-     * PowerManager.FULL_WAKE_LOCK acquired from an accessibility-service
-     * context is silently ignored - no crash, no error, it just doesn't
-     * turn the screen on. A WindowManager overlay carrying
-     * FLAG_TURN_SCREEN_ON + FLAG_DISMISS_KEYGUARD is a much stronger,
-     * window-level signal that One UI actually honors, since it's the
-     * same mechanism used by legitimate full-screen incoming-call UIs.
-     * The window is fully transparent and removes itself shortly after,
-     * so nothing is visibly drawn - it exists only to carry those flags.
+     * Forces the display (and lock screen, if locked) back on.
+     *
+     * History: a raw PowerManager.FULL_WAKE_LOCK from this service context
+     * was confirmed not to work on the user's device. A WindowManager
+     * overlay carrying FLAG_TURN_SCREEN_ON was tried next, but that also
+     * failed - confirmed the device runs Android 10, where those flags
+     * are deprecated (since 8.1) and no longer honored outside a real
+     * Activity. The only mechanism Android 10 actually supports from a
+     * background service is starting a transparent Activity that calls
+     * the modern setTurnScreenOn()/setShowWhenLocked() APIs on itself, so
+     * that's what this does now - see WakeScreenActivity.
      */
     private fun wakeScreenViaOverlay() {
         try {
-            val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
-            val overlayView = android.view.View(this)
-
-            val params = android.view.WindowManager.LayoutParams(
-                1, 1,
-                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-                android.graphics.PixelFormat.TRANSLUCENT
-            )
-
-            windowManager.addView(overlayView, params)
-
-            // Also acquire the wake lock as a belt-and-braces measure for
-            // devices where it does work - harmless if it's a no-op here.
-            DeviceUtils.wakeScreen(this)
-
-            handler.postDelayed({
-                try { windowManager.removeView(overlayView) } catch (e: Exception) { /* already gone */ }
-            }, 1500L)
+            val intent = Intent(this, WakeScreenActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+            startActivity(intent)
         } catch (e: Exception) {
-            // Fall back to the wake lock alone if the overlay can't be
-            // added for any reason (e.g. permission revoked).
+            // Fall back to the wake lock alone if the activity can't be
+            // started for any reason.
             DeviceUtils.wakeScreen(this)
         }
     }
