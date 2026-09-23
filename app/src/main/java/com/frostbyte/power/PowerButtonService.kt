@@ -128,6 +128,17 @@ class PowerButtonService : AccessibilityService() {
         vibrateFeedback()
     }
 
+    // TEMPORARY DEBUG AID: shows each key-event decision on-screen as a
+    // toast, since the user doesn't have adb/logcat access. Toasts queue
+    // automatically on Android, so several from one press/release
+    // sequence will show one after another. Remove once the tap issue is
+    // confirmed fixed.
+    private fun debugToast(message: String) {
+        handler.post {
+            android.widget.Toast.makeText(this, "DBG: $message", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun vibrateFeedback() {
         if (!PowerPrefs.isVibrationFeedbackEnabled(this)) return
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
@@ -172,32 +183,21 @@ class PowerButtonService : AccessibilityService() {
                 PowerPrefs.setIgnoreProximityEnabled(this, newState)
                 proximityOverride?.refresh()
 
+                // Force speaker audio and wake the screen immediately -
+                // covers the case where the sensor is already stuck and
+                // the screen is black right now (mid-call, or mid
+                // voice-message playback, which the automatic call-state
+                // listener can't see).
+                DeviceUtils.forceSpeakerphoneNow(this)
+                DeviceUtils.wakeScreen(this)
+
                 vibrateFeedback()
                 android.widget.Toast.makeText(
                     this,
-                    if (newState) "Speaker will turn ON in 10s — proximity fix enabled"
+                    if (newState) "Speaker ON — proximity fix enabled"
                     else "Proximity fix OFF",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
-
-                // Requested behavior: the actual speaker-force and screen
-                // wake happen 10 seconds after the long-press, not
-                // immediately. Only run the effect if the toggle is still
-                // in the ON state 10s later (so turning it back off in the
-                // meantime cancels the pending effect rather than firing
-                // anyway).
-                handler.postDelayed({
-                    if (PowerPrefs.isIgnoreProximityEnabled(this)) {
-                        DeviceUtils.forceSpeakerphoneNow(this)
-                        // Uses the plain wake lock, not WakeScreenActivity -
-                        // WakeScreenActivity has been the common factor in
-                        // every reported regression of this button
-                        // (single/double tap breaking, focus getting
-                        // stolen), while the plain wake lock is confirmed
-                        // working via the shake-to-wake revert.
-                        DeviceUtils.wakeScreen(this)
-                    }
-                }, 10_000L)
 
                 true
             }
@@ -330,6 +330,7 @@ class PowerButtonService : AccessibilityService() {
         // Volume keys get single/double-tap/long-press handling.
         return when (event.action) {
             KeyEvent.ACTION_DOWN -> {
+                debugToast("DOWN ${if (isVolUp) \"volUp\" else \"volDown\"} repeat=${event.repeatCount}")
                 if (isVolUp) {
                     volUpLongPressFired = false
                     handler.postDelayed(volUpLongPressRunnable, longPressWindowMs)
@@ -361,15 +362,18 @@ class PowerButtonService : AccessibilityService() {
             KeyEvent.ACTION_UP -> {
                 if (isVolUp) {
                     handler.removeCallbacks(volUpLongPressRunnable)
+                    debugToast("UP volUp, longFired=$volUpLongPressFired")
                     if (volUpLongPressFired) return isGestureBound(true, Gesture.LONG)
                 } else {
                     handler.removeCallbacks(volDownLongPressRunnable)
+                    debugToast("UP volDown, longFired=$volDownLongPressFired")
                     if (volDownLongPressFired) return isGestureBound(false, Gesture.LONG)
                 }
 
                 val now = System.currentTimeMillis()
                 val lastTime = if (isVolUp) lastVolUpTime else lastVolDownTime
                 val isDoubleTap = now - lastTime < doubleTapWindowMs
+                debugToast("isDoubleTap=$isDoubleTap")
 
                 if (isDoubleTap) {
                     // A genuine double-tap: cancel the pending single-tap
@@ -409,6 +413,7 @@ class PowerButtonService : AccessibilityService() {
                             PowerPrefs.getVolumeUpAction(this)
                         else
                             PowerPrefs.getVolumeDownAction(this)
+                        debugToast("singleTap firing, action=$singleAction")
                         runAction(singleAction)
                         if (isVolUp) pendingVolUpSingleTap = null else pendingVolDownSingleTap = null
                     }
