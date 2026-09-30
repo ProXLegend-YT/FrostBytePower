@@ -40,7 +40,38 @@ class PowerButtonService : AccessibilityService() {
         instance = this
         shakeDetector = ShakeDetector(this) { handleShake() }
         proximityOverride = ProximityOverride(this)
+        callVolumeKeyFallback = CallVolumeKeyFallback(this) { isVolUp -> handleFallbackTap(isVolUp) }
         applyAllLiveSettings()
+    }
+
+    /**
+     * Fallback path for volume single/double-tap gestures during an active
+     * call.
+     *
+     * Bug history: on this device, Android's in-call UI claims Volume
+     * Up/Down for call-volume purposes at a point ahead of this
+     * AccessibilityService's onKeyEvent - confirmed by testing showing NO
+     * app feedback (no vibration) when tapping Volume Up mid-call, only the
+     * plain system call-volume change, even though the exact same gesture
+     * works normally outside a call. There is no public API to force an
+     * AccessibilityService ahead of the system's own in-call key handling,
+     * so onKeyEvent cannot be fixed directly for this case.
+     *
+     * Workaround: CallVolumeKeyFallback watches the voice-call stream's
+     * volume level via Settings.System, which the OS still updates even
+     * when it intercepts the key before this service sees it. A detected
+     * level change while a call is active is treated as the equivalent tap
+     * and used to run the user's assigned single-tap action, then the
+     * level is immediately restored so the call's actual volume doesn't
+     * drift from repeated taps. This only activates during a call; outside
+     * a call the normal onKeyEvent path is unaffected and already works.
+     */
+    private var callVolumeKeyFallback: CallVolumeKeyFallback? = null
+
+    private fun handleFallbackTap(isVolUp: Boolean) {
+        val action = if (isVolUp) PowerPrefs.getVolumeUpAction(this) else PowerPrefs.getVolumeDownAction(this)
+        if (action == ButtonAction.DEFAULT) return
+        runAction(action)
     }
 
     // Called from MainActivity whenever any live-affecting setting changes,
@@ -61,6 +92,7 @@ class PowerButtonService : AccessibilityService() {
         }
 
         proximityOverride?.refresh()
+        callVolumeKeyFallback?.refresh()
     }
 
     /**
@@ -495,12 +527,14 @@ class PowerButtonService : AccessibilityService() {
     override fun onInterrupt() {
         shakeDetector?.stop()
         proximityOverride?.teardown()
+        callVolumeKeyFallback?.teardown()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         shakeDetector?.stop()
         proximityOverride?.teardown()
+        callVolumeKeyFallback?.teardown()
         handler.removeCallbacksAndMessages(null)
         instance = null
     }
