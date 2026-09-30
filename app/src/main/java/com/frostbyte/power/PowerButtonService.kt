@@ -183,13 +183,29 @@ class PowerButtonService : AccessibilityService() {
                 PowerPrefs.setIgnoreProximityEnabled(this, newState)
                 proximityOverride?.refresh()
 
-                // Force speaker audio and wake the screen immediately -
-                // covers the case where the sensor is already stuck and
-                // the screen is black right now (mid-call, or mid
-                // voice-message playback, which the automatic call-state
-                // listener can't see).
+                // Force speaker audio immediately, and only wake the
+                // screen if it's actually off right now - covers the case
+                // where the sensor is already stuck and the screen is
+                // black (mid-call, or mid voice-message playback, which
+                // the automatic call-state listener can't see).
+                //
+                // Bug history: this used to call DeviceUtils.wakeScreen()
+                // unconditionally on every toggle. That acquires a raw
+                // FULL_WAKE_LOCK, which briefly re-asserts window/input
+                // focus on this device (Samsung/One UI) even when the
+                // screen was already on - the exact same focus-steal
+                // mechanism already identified as breaking single/double
+                // tap on this key right after a long-press action fires,
+                // just via this call path instead of the
+                // WakeScreenActivity path. Skipping it when the screen is
+                // already interactive removes that spurious focus event
+                // without losing the "unstick a black screen" behavior it
+                // exists for.
                 DeviceUtils.forceSpeakerphoneNow(this)
-                DeviceUtils.wakeScreen(this)
+                val powerManagerForWake = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                if (!powerManagerForWake.isInteractive) {
+                    DeviceUtils.wakeScreen(this)
+                }
 
                 vibrateFeedback()
                 android.widget.Toast.makeText(
