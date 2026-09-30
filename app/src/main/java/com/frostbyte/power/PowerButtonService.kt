@@ -128,6 +128,15 @@ class PowerButtonService : AccessibilityService() {
         vibrateFeedback()
     }
 
+    private fun adjustSystemVolume(isVolUp: Boolean) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.adjustStreamVolume(
+            android.media.AudioManager.STREAM_MUSIC,
+            if (isVolUp) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+            android.media.AudioManager.FLAG_SHOW_UI
+        )
+    }
+
     private fun vibrateFeedback() {
         if (!PowerPrefs.isVibrationFeedbackEnabled(this)) return
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
@@ -366,10 +375,18 @@ class PowerButtonService : AccessibilityService() {
             KeyEvent.ACTION_UP -> {
                 if (isVolUp) {
                     handler.removeCallbacks(volUpLongPressRunnable)
-                    if (volUpLongPressFired) return isGestureBound(true, Gesture.LONG)
+                    if (volUpLongPressFired) {
+                        val bound = isGestureBound(true, Gesture.LONG)
+                        if (!bound) adjustSystemVolume(true)
+                        return bound
+                    }
                 } else {
                     handler.removeCallbacks(volDownLongPressRunnable)
-                    if (volDownLongPressFired) return isGestureBound(false, Gesture.LONG)
+                    if (volDownLongPressFired) {
+                        val bound = isGestureBound(false, Gesture.LONG)
+                        if (!bound) adjustSystemVolume(false)
+                        return bound
+                    }
                 }
 
                 val now = System.currentTimeMillis()
@@ -391,7 +408,11 @@ class PowerButtonService : AccessibilityService() {
                     else
                         PowerPrefs.getVolumeDownDoubleTapAction(this)
                     if (isVolUp) lastVolUpTime = 0L else lastVolDownTime = 0L
-                    runAction(doubleAction)
+                    if (doubleAction == ButtonAction.DEFAULT) {
+                        adjustSystemVolume(isVolUp)
+                    } else {
+                        runAction(doubleAction)
+                    }
                 } else {
                     if (isVolUp) lastVolUpTime = now else lastVolDownTime = now
                     // Delay the single-tap action slightly so a following
@@ -414,13 +435,26 @@ class PowerButtonService : AccessibilityService() {
                             PowerPrefs.getVolumeUpAction(this)
                         else
                             PowerPrefs.getVolumeDownAction(this)
-                        runAction(singleAction)
+                        if (singleAction == ButtonAction.DEFAULT) {
+                            adjustSystemVolume(isVolUp)
+                        } else {
+                            runAction(singleAction)
+                        }
                         if (isVolUp) pendingVolUpSingleTap = null else pendingVolDownSingleTap = null
                     }
                     if (isVolUp) pendingVolUpSingleTap = singleTapRunnable else pendingVolDownSingleTap = singleTapRunnable
                     handler.postDelayed(singleTapRunnable, doubleTapWindowMs)
                 }
-                isGestureBound(isVolUp, if (isDoubleTap) Gesture.DOUBLE else Gesture.SINGLE)
+                // Bug history: this used to return isGestureBound(...) here,
+                // which told Android "I didn't handle this" whenever the
+                // resolved gesture was Default Action - but by ACTION_UP
+                // time, ACTION_DOWN has *already* been consumed (see the
+                // comment there), so Android never ran its own volume
+                // change either. The key must always be fully claimed once
+                // DOWN claimed it; Default Action now replays the volume
+                // adjustment manually above instead of relying on Android
+                // to have handled the original DOWN event.
+                true
             }
             else -> false
         }
