@@ -18,9 +18,9 @@ enum class ButtonAction(val label: String) {
 
 enum class ShakeSensitivity(val label: String, val threshold: Float) {
     DISABLED("Disabled", 0f),
-    LOW("Enabled : Low Sensitive", 22f),
-    MEDIUM("Enabled : Medium Sensitive", 16f),
-    HIGH("Enabled : High Sensitive", 11f)
+    LOW("Enabled : Low Sensitive", 20f),
+    MEDIUM("Enabled : Medium Sensitive", 13f),
+    HIGH("Enabled : High Sensitive", 6f)
 }
 
 enum class ScreenTimeout(val label: String, val millis: Int) {

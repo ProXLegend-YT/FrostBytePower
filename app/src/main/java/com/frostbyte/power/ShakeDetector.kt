@@ -12,26 +12,32 @@ import kotlin.math.sqrt
 /**
  * Detects a "shake" gesture and fires [onShake].
  *
- * Two mechanisms are used together:
+ * Two mechanisms exist:
  *
- * 1. TYPE_SIGNIFICANT_MOTION (when the device has it) - this is a genuine
- *    hardware wake-up trigger sensor. Unlike a plain accelerometer, Android
- *    is specifically designed to keep delivering these even while the
- *    screen is off and the device is in Doze, because that's the sensor's
- *    entire purpose (it's what things like "lift to wake" rely on
- *    elsewhere in the OS). This is what actually makes Shake to Wake work
- *    with the screen off - a bare accelerometer listener, even held with a
- *    partial wake lock, is frequently suspended by the platform's sensor
- *    batching/power policy the moment the display turns off, regardless of
- *    the wake lock (confirmed non-functional this way on the user's
- *    device). It's a one-shot trigger: it must be re-armed via
- *    requestTriggerSensor() after every firing.
+ * 1. The raw accelerometer + magnitude-threshold check. This is the ONLY
+ *    mechanism that makes the sensitivity setting (Low/Medium/High)
+ *    actually mean anything, since it's the only one with an adjustable
+ *    threshold. It runs continuously, screen on or off, backed by a
+ *    partial wake lock that keeps the CPU (and therefore sensor delivery)
+ *    alive while the display is off.
  *
- * 2. The original raw accelerometer + magnitude-threshold approach is kept
- *    as a fallback for devices that don't expose TYPE_SIGNIFICANT_MOTION,
- *    and remains the only mechanism used while the screen is already on
- *    (where sensor suspension isn't a factor and the adjustable
- *    sensitivity levels are meaningful).
+ * 2. TYPE_SIGNIFICANT_MOTION (when the device has it) - a coarse hardware
+ *    trigger Android itself uses for things like "lift to wake". It has no
+ *    adjustable sensitivity at all and is tuned for a fairly large motion
+ *    (e.g. picking the phone up off a table), not a light shake.
+ *
+ * Bug history: this used to treat significant-motion as the primary,
+ * always-on mechanism for screen-off wakes, with the raw accelerometer
+ * documented as "only meaningful with the screen on". In practice
+ * significant-motion's own fixed trigger point would frequently fire
+ * before the raw accelerometer's threshold check got a chance to, which
+ * made the High/Medium/Low setting feel like it did nothing for
+ * Shake-to-Wake - the user's actual selection was being raced and
+ * overridden by an unrelated, non-adjustable sensor. Significant-motion is
+ * now only armed as a fallback for devices where the raw accelerometer
+ * listener fails to register at all; whenever the accelerometer is
+ * available, the user's chosen sensitivity is what decides how hard a
+ * shake needs to be, screen on or off.
  */
 class ShakeDetector(
     context: Context,
@@ -48,7 +54,7 @@ class ShakeDetector(
     private var registered = false
     private var significantMotionArmed = false
     private var lastShakeTime = 0L
-    private val minShakeIntervalMs = 1000L
+    private val minShakeIntervalMs = 600L
 
     private val significantMotionListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent?) {
@@ -65,6 +71,9 @@ class ShakeDetector(
     }
 
     private fun armSignificantMotion() {
+        // Only used as a fallback when there's no accelerometer to honor
+        // the user's chosen sensitivity with - see class doc.
+        if (accelerometer != null) return
         val sensor = significantMotion ?: return
         if (significantMotionArmed) return
         significantMotionArmed = sensorManager.requestTriggerSensor(significantMotionListener, sensor)
