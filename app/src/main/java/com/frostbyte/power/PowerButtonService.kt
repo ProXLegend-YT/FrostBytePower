@@ -128,17 +128,6 @@ class PowerButtonService : AccessibilityService() {
         vibrateFeedback()
     }
 
-    // TEMPORARY DEBUG AID: shows each key-event decision on-screen as a
-    // toast, since the user doesn't have adb/logcat access. Toasts queue
-    // automatically on Android, so several from one press/release
-    // sequence will show one after another. Remove once the tap issue is
-    // confirmed fixed.
-    private fun debugToast(message: String) {
-        handler.post {
-            android.widget.Toast.makeText(this, "DBG: $message", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun vibrateFeedback() {
         if (!PowerPrefs.isVibrationFeedbackEnabled(this)) return
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
@@ -346,7 +335,6 @@ class PowerButtonService : AccessibilityService() {
         // Volume keys get single/double-tap/long-press handling.
         return when (event.action) {
             KeyEvent.ACTION_DOWN -> {
-                debugToast("DOWN ${if (isVolUp) \"volUp\" else \"volDown\"} repeat=${event.repeatCount}")
                 if (isVolUp) {
                     volUpLongPressFired = false
                     handler.postDelayed(volUpLongPressRunnable, longPressWindowMs)
@@ -378,18 +366,15 @@ class PowerButtonService : AccessibilityService() {
             KeyEvent.ACTION_UP -> {
                 if (isVolUp) {
                     handler.removeCallbacks(volUpLongPressRunnable)
-                    debugToast("UP volUp, longFired=$volUpLongPressFired")
                     if (volUpLongPressFired) return isGestureBound(true, Gesture.LONG)
                 } else {
                     handler.removeCallbacks(volDownLongPressRunnable)
-                    debugToast("UP volDown, longFired=$volDownLongPressFired")
                     if (volDownLongPressFired) return isGestureBound(false, Gesture.LONG)
                 }
 
                 val now = System.currentTimeMillis()
                 val lastTime = if (isVolUp) lastVolUpTime else lastVolDownTime
                 val isDoubleTap = now - lastTime < doubleTapWindowMs
-                debugToast("isDoubleTap=$isDoubleTap")
 
                 if (isDoubleTap) {
                     // A genuine double-tap: cancel the pending single-tap
@@ -429,7 +414,6 @@ class PowerButtonService : AccessibilityService() {
                             PowerPrefs.getVolumeUpAction(this)
                         else
                             PowerPrefs.getVolumeDownAction(this)
-                        debugToast("singleTap firing, action=$singleAction")
                         runAction(singleAction)
                         if (isVolUp) pendingVolUpSingleTap = null else pendingVolDownSingleTap = null
                     }
